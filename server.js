@@ -19,27 +19,37 @@ app.get('/api/search', async (req, res) => {
     try {
         const response = await axios.get(`https://momon-ga.com/?s=${encodeURIComponent(query)}`, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36' 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+                'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8'
             }
         });
         const html = response.data;
         const results = [];
         
-        // 修正ポイント: 改行や空白に左右されないよう [\s\S]*? を多用し、タグの構成を柔軟に
-        // momon-gaの検索結果は <article> 内に <a> や <img> が含まれる構造
-        const itemRegex = /<article[\s\S]*?href="https:\/\/momon-ga\.com\/fanzine\/(.*?)\/"[\s\S]*?src="([^"]+)"[\s\S]*?entry-title"><a[^>]*>(.*?)<\/a>/g;
+        // 修正：個別のarticleをまず分割して取得し、その中からデータを抜き出す（より確実な方法）
+        const articleBlocks = html.match(/<article[\s\S]*?<\/article>/g);
         
-        let match;
-        while ((match = itemRegex.exec(html)) !== null) {
-            results.push({
-                id: match[1].replace(/\/$/, ""), 
-                image: match[2],
-                title: match[3].trim(),
-                rule: "" 
+        if (articleBlocks) {
+            articleBlocks.forEach(block => {
+                // ID (URLから抽出)
+                const idMatch = block.match(/href="https:\/\/momon-ga\.com\/fanzine\/(.*?)\/"/);
+                // 画像URL (data-src や src 両方に対応)
+                const imgMatch = block.match(/src="([^"]+)"/);
+                // タイトル (h2内のテキスト)
+                const titleMatch = block.match(/entry-title">[\s\S]*?>(.*?)<\/a>/);
+
+                if (idMatch && imgMatch && titleMatch) {
+                    results.push({
+                        id: idMatch[1].replace(/\/$/, ""), 
+                        image: imgMatch[1],
+                        title: titleMatch[1].replace(/<[^>]*>?/gm, '').trim(),
+                        rule: "" 
+                    });
+                }
             });
         }
 
-        console.log(`Query: ${query}, Found: ${results.length} items`); // デバッグ用
+        console.log(`Query: ${query}, Found: ${results.length} items`);
         res.json({ result: results });
     } catch (error) {
         console.error("Search API Error:", error.message);
