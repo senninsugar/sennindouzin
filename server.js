@@ -14,17 +14,20 @@ app.use((req, res, next) => {
 // 静的ファイルの提供 (Renderデプロイ用)
 app.use(express.static('.'));
 
-// 自前スクレイピング検索エンドポイント
+// 自前スクレイピング検索エンドポイント (s=クエリに対応)
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json({ result: [] });
 
     try {
-        const response = await axios.get(`https://momon-ga.com/search?q=${encodeURIComponent(query)}`, {
+        // ご提示の検索形式 https://momon-ga.com/?s=キーワード に対応
+        const response = await axios.get(`https://momon-ga.com/?s=${encodeURIComponent(query)}`, {
             headers: { 'User-Agent': 'Mozilla/5.0' }
         });
         const html = response.data;
         const results = [];
+        
+        // 検索結果のアイテム（aタグのhref、imgのsrc、タイトル等）を抽出する正規表現
         const itemRegex = /<div class="fanzine-item">[\s\S]*?href="\/fanzine\/(.*?)"[\s\S]*?src="(.*?)"[\s\S]*?class="title">(.*?)<\/div>/g;
         
         let match;
@@ -58,7 +61,7 @@ app.get('/api/proxy-details', async (req, res) => {
         while ((match = galleryRegex.exec(htmlString)) !== null) {
             let src = match[1];
             if (src.startsWith('/')) src = 'https://momon-ga.com' + src;
-            // 画像はBase64にせず、自前プロキシURLに変換してフロントに渡す
+            // 画像はプロキシ経由のURLとして返却
             imgUrls.push(`/api/image-proxy?url=${encodeURIComponent(src)}`);
         }
 
@@ -75,7 +78,7 @@ app.get('/api/proxy-details', async (req, res) => {
     }
 });
 
-// 画像プロキシエンドポイント (負荷を抑えるためストリームで返却)
+// 画像プロキシエンドポイント (Refererを偽装して取得)
 app.get('/api/image-proxy', async (req, res) => {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Image URL is required");
@@ -85,7 +88,10 @@ app.get('/api/image-proxy', async (req, res) => {
             method: 'get',
             url: imageUrl,
             responseType: 'stream',
-            headers: { 'Referer': 'https://momon-ga.com/', 'User-Agent': 'Mozilla/5.0' }
+            headers: { 
+                'Referer': 'https://momon-ga.com/', 
+                'User-Agent': 'Mozilla/5.0' 
+            }
         });
         res.setHeader('Content-Type', response.headers['content-type']);
         response.data.pipe(res);
