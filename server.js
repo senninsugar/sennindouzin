@@ -14,20 +14,36 @@ app.use((req, res, next) => {
 // 静的ファイルの提供 (Renderデプロイ用)
 app.use(express.static('.'));
 
-// 画像をBase64に変換する関数
-async function getBase64(url) {
-    try {
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
-        const contentType = response.headers['content-type'];
-        const base64 = Buffer.from(response.data, 'binary').toString('base64');
-        return `data:${contentType};base64,${base64}`;
-    } catch (e) {
-        return null;
-    }
-}
+// 自前スクレイピング検索エンドポイント
+app.get('/api/search', async (req, res) => {
+    const query = req.query.q;
+    if (!query) return res.json({ result: [] });
 
-// スクレイピング & Base64一括変換エンドポイント
-app.get('/api/proxy-base64', async (req, res) => {
+    try {
+        const response = await axios.get(`https://momon-ga.com/search?q=${encodeURIComponent(query)}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const html = response.data;
+        const results = [];
+        const itemRegex = /<div class="fanzine-item">[\s\S]*?href="\/fanzine\/(.*?)"[\s\S]*?src="(.*?)"[\s\S]*?class="title">(.*?)<\/div>/g;
+        
+        let match;
+        while ((match = itemRegex.exec(html)) !== null) {
+            results.push({
+                id: match[1],
+                image: match[2].startsWith('http') ? match[2] : `https://momon-ga.com${match[2]}`,
+                title: match[3].trim(),
+                rule: "" 
+            });
+        }
+        res.json({ result: results });
+    } catch (error) {
+        res.status(500).json({ error: "Search failed" });
+    }
+});
+
+// 詳細ページスクレイピングエンドポイント
+app.get('/api/proxy-details', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("URL is required");
 
@@ -36,33 +52,45 @@ app.get('/api/proxy-base64', async (req, res) => {
             headers: { 'User-Agent': 'Mozilla/5.0' }
         });
         const htmlString = response.data;
-
-        // サーバーサイドで簡易的に画像URLを抽出
         const imgUrls = [];
         const galleryRegex = /src="([^"]*galleries[^"]*)"/g;
         let match;
         while ((match = galleryRegex.exec(htmlString)) !== null) {
             let src = match[1];
             if (src.startsWith('/')) src = 'https://momon-ga.com' + src;
-            imgUrls.push(src);
+            // 画像はBase64にせず、自前プロキシURLに変換してフロントに渡す
+            imgUrls.push(`/api/image-proxy?url=${encodeURIComponent(src)}`);
         }
 
-        // 重複削除
         const uniqueUrls = [...new Set(imgUrls)];
-
-        // 全画像をBase64に変換 (並列処理)
-        const base64Images = await Promise.all(uniqueUrls.map(url => getBase64(url)));
-        
-        // タイトル抽出 (簡易)
         const titleMatch = htmlString.match(/<h1>(.*?)<\/h1>/);
         const title = titleMatch ? titleMatch[1] : "No Title";
 
         res.json({
             title: title,
-            images: base64Images.filter(img => img !== null)
+            images: uniqueUrls
         });
     } catch (error) {
-        res.status(500).json({ error: "Failed to fetch and convert images" });
+        res.status(500).json({ error: "Failed to fetch details" });
+    }
+});
+
+// 画像プロキシエンドポイント (負荷を抑えるためストリームで返却)
+app.get('/api/image-proxy', async (req, res) => {
+    const imageUrl = req.query.url;
+    if (!imageUrl) return res.status(400).send("Image URL is required");
+
+    try {
+        const response = await axios({
+            method: 'get',
+            url: imageUrl,
+            responseType: 'stream',
+            headers: { 'Referer': 'https://momon-ga.com/', 'User-Agent': 'Mozilla/5.0' }
+        });
+        res.setHeader('Content-Type', response.headers['content-type']);
+        response.data.pipe(res);
+    } catch (error) {
+        res.status(500).send("Image proxy error");
     }
 });
 
