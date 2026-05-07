@@ -71,9 +71,15 @@ app.get('/api/proxy-details', async (req, res) => {
 app.get('/api/image-proxy', async (req, res) => {
     const imageUrl = req.query.url;
     try {
-        const response = await axios({ method: 'get', url: imageUrl, responseType: 'stream', headers: { 'Referer': 'https://momon-ga.com/' } });
-        res.setHeader('Content-Type', response.headers['content-type']);
-        response.data.pipe(res);
+        const response = await axios({ 
+            method: 'get', 
+            url: imageUrl, 
+            responseType: 'arraybuffer', // バイナリデータとして取得
+            headers: { 'Referer': 'https://momon-ga.com/' } 
+        });
+        const contentType = response.headers['content-type'];
+        const base64 = Buffer.from(response.data, 'binary').toString('base64');
+        res.send(`data:${contentType};base64,${base64}`);
     } catch (e) { res.status(500).send("Image proxy error"); }
 });
 
