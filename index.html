@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数学　sennin塾</title>
+    <title></title>
     <style>
         /* 全体設定: eBookプラットフォームを意識したライトUI */
         :root {
@@ -291,22 +291,15 @@
 
             viewerTitle.innerText = data.title;
             
+            // サーバー側ですでにBase64化されているため、フロントエンドでの再fetchループは不要
             if (data.images && data.images.length > 0) {
-                // Base64テキストとして取得するために、各proxyUrlを個別にfetchする
-                viewerStatus.innerText = "画像データを変換中...";
-                
-                const base64Images = await Promise.all(data.images.map(async (url) => {
-                    const res = await fetch(url);
-                    return await res.text(); // サーバーから返ってくるdata:image/...の文字列
-                }));
-
-                currentImages = base64Images;
-                base64Images.forEach(base64Data => {
+                currentImages = data.images;
+                data.images.forEach(base64Data => {
                     const newImg = document.createElement('img');
                     newImg.src = base64Data;
                     viewerImageList.appendChild(newImg);
                 });
-                viewerStatus.innerText = `${base64Images.length} ページを表示中`;
+                viewerStatus.innerText = `${data.images.length} ページを表示中`;
             } else {
                 viewerStatus.innerText = "画像データが見つかりませんでした。";
             }
