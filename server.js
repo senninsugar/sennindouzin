@@ -11,6 +11,24 @@ app.use((req, res, next) => {
 
 app.use(express.static('.'));
 
+// 画像URLをBase64に変換する共通関数
+async function getBase64(url) {
+    if (!url) return null;
+    try {
+        const res = await axios.get(url, { 
+            responseType: 'arraybuffer', 
+            timeout: 8000,
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://momon-ga.com/' }
+        });
+        const contentType = res.headers['content-type'];
+        const base64 = Buffer.from(res.data).toString('base64');
+        return `data:${contentType};base64,${base64}`;
+    } catch (e) {
+        console.error(`Image Fetch Error: ${url}`, e.message);
+        return null;
+    }
+}
+
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json({ result: [] });
@@ -46,8 +64,7 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// --- 以下、詳細取得と画像プロキシは前回同様 ---
-
+// 全ての画像処理をサーバーサイドで行い、Base64配列として返却する
 app.get('/api/proxy-details', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send("URL is required");
@@ -60,12 +77,27 @@ app.get('/api/proxy-details', async (req, res) => {
         while ((match = galleryRegex.exec(htmlString)) !== null) {
             let src = match[1];
             if (src.startsWith('/')) src = 'https://momon-ga.com' + src;
-            imgUrls.push(`/api/image-proxy?url=${encodeURIComponent(src)}`);
+            imgUrls.push(src);
         }
+        
+        const uniqueImgUrls = [...new Set(imgUrls)];
+        
+        // 参考例に基づき、すべての画像をサーバー側でBase64のデータURLに一括変換
+        const imageUrlsBase64 = await Promise.all(
+            uniqueImgUrls.map(url => getBase64(url))
+        );
+
+        // エラー等で null になったものを除外
+        const filteredImages = imageUrlsBase64.filter(img => img !== null);
+
         const titleMatch = htmlString.match(/<h1[^>]*>(.*?)<\/h1>/);
         const title = titleMatch ? titleMatch[1].replace(/<[^>]*>?/gm, '').trim() : "No Title";
-        res.json({ title, images: [...new Set(imgUrls)] });
-    } catch (e) { res.status(500).send("Detail fetch error"); }
+        
+        // フロントエンドの元の変数構造に合わせるため images として返却
+        res.json({ title, images: filteredImages });
+    } catch (e) { 
+        res.status(500).send("Detail fetch error"); 
+    }
 });
 
 app.get('/api/image-proxy', async (req, res) => {
