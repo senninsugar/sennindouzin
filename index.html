@@ -311,7 +311,9 @@
 
         currentImages = [];
 
-        const targetUrl = `https://momon-ga.com/fanzine/${id}`;
+        // バックエンドの検索正規表現 (fanzine|magazine) と完全に合致させる動的URL生成
+        const subDirectory = id.startsWith('mo-') ? 'magazine' : 'fanzine';
+        const targetUrl = `https://momon-ga.com/${subDirectory}/${id}/`;
 
         const finalUrl = `${MY_API_DETAILS}?url=${encodeURIComponent(targetUrl)}`;
 
