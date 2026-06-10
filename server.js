@@ -2,11 +2,10 @@ const express = require('express');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
-const crypto = require('crypto'); // 画像ID生成用
+const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// HTTP/HTTPS Keep-Alive を有効化
 const httpAgent = new http.Agent({ keepAlive: true });
 const httpsAgent = new https.Agent({ keepAlive: true });
 
@@ -16,6 +15,23 @@ const axiosInstance = axios.create({
     timeout: 8000
 });
 
+const ENC_KEY = crypto.randomBytes(32);
+const IV_LENGTH = 16;
+
+function encryptBuffer(buffer) {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-cbc', ENC_KEY, iv);
+    const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+    return Buffer.concat([iv, encrypted]);
+}
+
+function decryptBuffer(buffer) {
+    const iv = buffer.subarray(0, IV_LENGTH);
+    const encryptedText = buffer.subarray(IV_LENGTH);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, iv);
+    return Buffer.concat([decipher.update(encryptedText), decipher.final()]);
+}
+
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -24,11 +40,8 @@ app.use((req, res, next) => {
 
 app.use(express.static('.'));
 
-// 画像のバイナリデータとMimeTypeを一時的に保持するサーバー内メモリキャッシュ
-// フロント側にはこのキー（ランダムID）だけが渡ります
 const imageCache = new Map();
 
-// 画像を事前取得してキャッシュに保存し、フロント用の内部プロキシURLを返す関数
 async function registerImageProxy(url) {
     if (!url) return null;
     try {
@@ -42,22 +55,19 @@ async function registerImageProxy(url) {
 
         const contentType = res.headers['content-type'] || 'image/jpeg';
         const buffer = Buffer.from(res.data);
+        const encryptedBuffer = encryptBuffer(buffer);
 
-        // ランダムな一意のIDを生成
         const imageId = crypto.randomBytes(16).toString('hex');
 
-        // メモリにバイナリ情報ごと保存
         imageCache.set(imageId, {
-            buffer: buffer,
+            buffer: encryptedBuffer,
             contentType: contentType
         });
 
-        // 古いキャッシュによるメモリ圧迫を防ぐため、3分後に自動消去
         setTimeout(() => {
             imageCache.delete(imageId);
         }, 180000);
 
-        // フロント側はこのURLをそのまま <img src="..."> に入れるだけで画像が表示されます
         return `/api/image/${imageId}`;
 
     } catch (e) {
@@ -66,7 +76,6 @@ async function registerImageProxy(url) {
     }
 }
 
-// 1. 検索API
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json({ result: [] });
@@ -91,11 +100,10 @@ app.get('/api/search', async (req, res) => {
             const title = match[3];
 
             tasks.push((async () => {
-                // 画像をサーバー側にバイナリとして引っ張り込み、内部URLへ差し替え
                 const proxyImageUrl = await registerImageProxy(imgUrl);
                 return {
                     id: id,
-                    image: proxyImageUrl, // 内部用プロキシURLが入る
+                    image: proxyImageUrl,
                     title: title,
                     rule: ""
                 };
@@ -114,14 +122,11 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// 2. 詳細情報取得API（フロントから渡された内部作品IDからサーバー側でURLを組み立てる）
 app.get('/api/proxy-details', async (req, res) => {
-    // フロント側から渡されるのは単なるID（例: mo12345）のみ。生の外部URLは扱わせない。
     const id = req.query.id;
 
     if (!id) return res.status(400).send("ID is required");
 
-    // サーバー側で安全に対象URLを生成
     const targetUrl = `https://momon-ga.com/fanzine/${id}`;
 
     try {
@@ -146,12 +151,10 @@ app.get('/api/proxy-details', async (req, res) => {
 
         const uniqueImgUrls = [...new Set(imgUrls)];
 
-        // 全ての画像を並列で取得・サーバー内部のメモリに格納
         const proxyImageUrls = await Promise.all(
             uniqueImgUrls.map(url => registerImageProxy(url))
         );
 
-        // null除外
         const filteredImages = proxyImageUrls.filter(img => img !== null);
 
         const titleMatch = htmlString.match(/<h1[^>]*>(.*?)<\/h1>/);
@@ -159,7 +162,6 @@ app.get('/api/proxy-details', async (req, res) => {
             ? titleMatch[1].replace(/<[^>]*>?/gm, '').trim()
             : "No Title";
 
-        // フロント側へは、安全な内部プロキシURLの配列が返却されます
         res.json({
             title,
             images: filteredImages
@@ -171,7 +173,6 @@ app.get('/api/proxy-details', async (req, res) => {
     }
 });
 
-// 3. 画像バイナリ実体返却エンドポイント
 app.get('/api/image/:id', (req, res) => {
     const imageId = req.params.id;
     const cachedImage = imageCache.get(imageId);
@@ -180,13 +181,17 @@ app.get('/api/image/:id', (req, res) => {
         return res.status(404).send("Image not found or expired");
     }
 
-    // 正しいContent-Typeを設定して、生のバイナリデータをそのまま高速送信
-    res.setHeader('Content-Type', cachedImage.contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // ブラウザキャッシュ有効化
-    res.send(cachedImage.buffer);
+    try {
+        const decryptedBuffer = decryptBuffer(cachedImage.buffer);
+        res.setHeader('Content-Type', cachedImage.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.send(decryptedBuffer);
+    } catch (e) {
+        console.error(e.message);
+        res.status(500).send("Decryption error");
+    }
 });
 
-// 4. 単体画像Proxy
 app.get('/api/image-proxy', async (req, res) => {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("URL is required");
