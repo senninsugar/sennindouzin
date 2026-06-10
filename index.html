@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title></title>
     <style>
-        /* 全体設定: eBookプラットフォームを意識したライトUI */
         :root {
             --bg-body: #f8f9fa;
             --bg-card: #ffffff;
@@ -32,7 +31,6 @@
             padding: 30px 20px;
         }
 
-        /* Sennin ロゴスタイル */
         .brand-header {
             text-align: center;
             margin-bottom: 40px;
@@ -46,7 +44,6 @@
             margin: 0;
         }
 
-        /* 検索ボックス: シンプルで機能的なデザイン */
         .search-box {
             display: flex;
             gap: 0;
@@ -87,7 +84,6 @@
             box-shadow: 0 4px 8px rgba(52,152,219,0.3);
         }
 
-        /* グリッド: 書店の棚のような整理されたレイアウト */
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -146,7 +142,6 @@
 
         .status { text-align: center; margin: 40px; color: var(--text-sub); font-size: 0.95em; }
 
-        /* ビューア: リーダーのような没入感のあるライトモード */
         #viewerOverlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #ffffff; z-index: 1000; overflow-y: auto; color: var(--text-main);
@@ -230,7 +225,6 @@
 
     let currentImages = [];
 
-    // 検索機能
     async function search() {
 
         const query = document.getElementById('searchInput').value;
@@ -261,7 +255,6 @@
 
                     card.className = 'card';
 
-                    // サーバーから返された内部プロキシURL（/api/image/xxxx）をそのままimg.srcへ代入
                     card.innerHTML = `
                         <img src="${item.image}" alt="${item.title}" loading="lazy">
                         <div class="card-info">
@@ -288,7 +281,6 @@
         }
     }
 
-    // ビューア機能 (作品IDのみをサーバーに送り、フロントでのURL組み立てを完全撤廃)
     async function openViewer(id, rule) {
 
         const overlay = document.getElementById('viewerOverlay');
@@ -311,7 +303,6 @@
 
         currentImages = [];
 
-        // フロント側から外部サイトのURL指定を完全排除し、独自IDパラメータに切り替え
         const finalUrl = `${MY_API_DETAILS}?id=${encodeURIComponent(id)}`;
 
         try {
@@ -330,7 +321,6 @@
 
                     const newImg = document.createElement('img');
 
-                    // サーバー側の一時プロキシURL（/api/image/xxxx）をそのままsrcへ指定して直接表示
                     newImg.src = proxyUrl;
 
                     viewerImageList.appendChild(newImg);
@@ -351,7 +341,6 @@
         }
     }
 
-    // ダウンロード機能
     function downloadAll() {
 
         if (currentImages.length === 0) return;
@@ -364,7 +353,6 @@
 
                     const link = document.createElement('a');
 
-                    // サーバーの一時画像プロキシURLをそのまま利用して安全に保存
                     link.href = proxyUrl;
 
                     link.download = `file-${index + 1}.jpg`;
