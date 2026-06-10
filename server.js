@@ -3,6 +3,7 @@ const axios = require('axios');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const path = require('path'); // パス操作用に追加
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -39,6 +40,18 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static('.'));
+
+// --- 追加ルーティング設定 ---
+// お気に入り画面 (favorite.html) へのルート
+app.get('/favorite.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'favorite.html'));
+});
+
+// 読み途中画面 (yomitotyuu.html) へのルート
+app.get('/yomitotyuu.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'yomitotyuu.html'));
+});
+// ----------------------------
 
 const imageCache = new Map();
 
