@@ -288,7 +288,7 @@
         }
     }
 
-    // ビューア機能
+    // ビューア機能 (作品IDのみをサーバーに送り、フロントでのURL組み立てを完全撤廃)
     async function openViewer(id, rule) {
 
         const overlay = document.getElementById('viewerOverlay');
@@ -311,9 +311,8 @@
 
         currentImages = [];
 
-        const targetUrl = `https://momon-ga.com/fanzine/${id}`;
-
-        const finalUrl = `${MY_API_DETAILS}?url=${encodeURIComponent(targetUrl)}`;
+        // フロント側から外部サイトのURL指定を完全排除し、独自IDパラメータに切り替え
+        const finalUrl = `${MY_API_DETAILS}?id=${encodeURIComponent(id)}`;
 
         try {
 
