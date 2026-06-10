@@ -29,11 +29,13 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 30px 20px;
+            position: relative;
         }
 
         .brand-header {
             text-align: center;
             margin-bottom: 40px;
+            position: relative;
         }
 
         .brand-header h1 {
@@ -42,6 +44,68 @@
             letter-spacing: 1px;
             color: var(--primary);
             margin: 0;
+        }
+
+        /* 3本点（メニューボタン）の配置 */
+        .menu-trigger {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-sub);
+            padding: 5px 10px;
+            user-select: none;
+            transition: var(--transition);
+        }
+        .menu-trigger:hover {
+            color: var(--primary);
+        }
+
+        /* ホーム画面用メニューモーダル */
+        .home-menu-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+        }
+        .home-menu-content {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border: 1px solid var(--border);
+            width: 200px;
+            overflow: hidden;
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .home-menu-item {
+            display: block;
+            padding: 14px 20px;
+            color: var(--text-main);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .home-menu-item:last-child {
+            border-bottom: none;
+        }
+        .home-menu-item:hover {
+            background: #f1f3f5;
+            color: var(--accent-blue);
         }
 
         .search-box {
@@ -147,9 +211,13 @@
             background: #ffffff; z-index: 1000; overflow-y: auto; color: var(--text-main);
         }
 
+        /* スクロールで隠れるヘッダーのためのスタイル修正 */
         .viewer-header {
-            position: sticky;
+            position: fixed;
             top: 0;
+            left: 0;
+            width: 100%;
+            box-sizing: border-box;
             background: rgba(255,255,255,0.95);
             padding: 12px 25px;
             display: flex;
@@ -158,9 +226,16 @@
             border-bottom: 1px solid var(--border);
             backdrop-filter: blur(8px);
             z-index: 1002;
+            transition: transform 0.3s ease;
+        }
+        
+        /* ヘッダー非表示用のクラス */
+        .viewer-header.hide {
+            transform: translateY(-100%);
         }
 
-        .viewer-content { max-width: 850px; margin: 0 auto; text-align: center; padding: 20px; }
+        /* 固定ヘッダーの裏に隠れないよう上部余白を設定 */
+        .viewer-content { max-width: 850px; margin: 0 auto; text-align: center; padding: 80px 20px 20px 20px; }
 
         .close-btn { font-size: 28px; cursor: pointer; color: var(--text-sub); line-height: 1; }
         .close-btn:hover { color: var(--text-main); }
@@ -178,6 +253,24 @@
         }
         .dl-btn-top:hover { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
 
+        /* お気に入りボタン用スタイル */
+        .fav-btn {
+            background: #fff;
+            color: #f1c40f;
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .fav-btn.active {
+            background: #f1c40f;
+            color: #fff;
+            border-color: #f1c40f;
+        }
+
         .viewer-image-list img {
             max-width: 100%;
             margin-bottom: 15px;
@@ -193,6 +286,7 @@
 <div class="container">
     <div class="brand-header">
         <h1></h1>
+        <div class="menu-trigger" onclick="toggleHomeMenu(event)">⋮</div>
     </div>
 
     <div class="search-box">
@@ -204,10 +298,18 @@
     <div class="grid" id="resultGrid"></div>
 </div>
 
+<div id="homeMenuModal" class="home-menu-modal" onclick="toggleHomeMenu(event)">
+    <div class="home-menu-content" onclick="event.stopPropagation()">
+        <a href="favolite.html" class="home-menu-item">★ お気に入り</a>
+        <a href="yomitotyuu.html" class="home-menu-item">📖 読み途中</a>
+    </div>
+</div>
+
 <div id="viewerOverlay">
-    <div class="viewer-header">
+    <div class="viewer-header" id="viewerHeader">
         <h2 id="viewerTitle"></h2>
         <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="favBtn" class="fav-btn" onclick="toggleFavorite()">★ お気に入り</button>
             <a href="javascript:void(0)" class="dl-btn-top" onclick="downloadAll()">一括保存</a>
             <span class="close-btn" onclick="closeViewer()">✕</span>
         </div>
@@ -224,6 +326,24 @@
     const MY_API_DETAILS = '/api/proxy-details';
 
     let currentImages = [];
+    let currentId = null; // 現在開いている作品のIDを保持
+    let lastScrollTop = 0; // スクロール方向判定用
+
+    // ホーム画面のメニューモーダルの開閉
+    function toggleHomeMenu(event) {
+        const modal = document.getElementById('homeMenuModal');
+        if (modal.style.display === 'block') {
+            modal.style.display = 'none';
+        } else {
+            modal.style.display = 'block';
+        }
+        if(event) event.stopPropagation();
+    }
+
+    // 画面外クリック時にメニューを閉じる設定
+    window.addEventListener('click', function() {
+        document.getElementById('homeMenuModal').style.display = 'none';
+    });
 
     async function search() {
 
@@ -282,6 +402,7 @@
     }
 
     async function openViewer(id, rule) {
+        currentId = id; // 現在のIDを記録
 
         const overlay = document.getElementById('viewerOverlay');
 
@@ -302,6 +423,9 @@
         viewerStatus.innerText = "コンテンツを最適化しています...";
 
         currentImages = [];
+        
+        // お気に入りボタンの状態更新
+        updateFavoriteButtonState();
 
         const finalUrl = `${MY_API_DETAILS}?id=${encodeURIComponent(id)}`;
 
@@ -317,16 +441,28 @@
 
                 currentImages = data.images;
 
-                data.images.forEach(proxyUrl => {
+                data.images.forEach((proxyUrl, index) => {
 
                     const newImg = document.createElement('img');
 
                     newImg.src = proxyUrl;
+                    newImg.dataset.index = index; // しおり位置特定用インデックス
 
                     viewerImageList.appendChild(newImg);
                 });
 
                 viewerStatus.innerText = `${data.images.length} ページを表示中`;
+
+                // しおり機能：前回保存された位置があれば自動スクロール
+                setTimeout(() => {
+                    const savedIndex = localStorage.getItem(`bookmark_${currentId}`);
+                    if (savedIndex !== null) {
+                        const targetImg = viewerImageList.querySelector(`img[data-index="${savedIndex}"]`);
+                        if (targetImg) {
+                            targetImg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }
+                }, 300);
 
             } else {
 
@@ -340,6 +476,65 @@
             viewerStatus.innerText = "データの取得に失敗しました。";
         }
     }
+
+    // お気に入りボタンの表示更新
+    function updateFavoriteButtonState() {
+        const favBtn = document.getElementById('favBtn');
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        if (favorites.includes(currentId)) {
+            favBtn.innerText = '★ お気に入り中';
+            favBtn.classList.add('active');
+        } else {
+            favBtn.innerText = '☆ お気に入り';
+            favBtn.classList.remove('active');
+        }
+    }
+
+    // お気に入りの切り替え処理
+    function toggleFavorite() {
+        if (!currentId) return;
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        const index = favorites.indexOf(currentId);
+        
+        if (index > -1) {
+            favorites.splice(index, 1); // 登録解除
+        } else {
+            favorites.push(currentId); // 新規登録
+        }
+        
+        localStorage.setItem('favorites', JSON.stringify(favorites));
+        updateFavoriteButtonState();
+    }
+
+    // ビューアー内スクロールイベント（ヘッダー開閉 ＆ 自動しおり保存）
+    document.getElementById('viewerOverlay').addEventListener('scroll', function(e) {
+        const overlay = e.target;
+        const scrollTop = overlay.scrollTop;
+        const header = document.getElementById('viewerHeader');
+
+        // 1. 下スクロールでヘッダー非表示、上スクロールで表示
+        if (scrollTop > lastScrollTop && scrollTop > 100) {
+            header.classList.add('hide');
+        } else {
+            header.classList.remove('hide');
+        }
+        lastScrollTop = scrollTop;
+
+        // 2. 自動しおり機能：現在画面内（上部付近）に見えている画像を検出して保存
+        if (currentImages.length === 0 || !currentId) return;
+        const images = overlay.querySelectorAll('.viewer-image-list img');
+        let currentVisibleIndex = 0;
+        
+        for (let img of images) {
+            const rect = img.getBoundingClientRect();
+            // 画面上部から半分くらいの位置にある画像を現在の閲覧位置とみなす
+            if (rect.top <= window.innerHeight / 2 && rect.bottom >= window.innerHeight / 2) {
+                currentVisibleIndex = img.dataset.index;
+                break;
+            }
+        }
+        localStorage.setItem(`bookmark_${currentId}`, currentVisibleIndex);
+    });
 
     function downloadAll() {
 
@@ -375,6 +570,9 @@
         document.getElementById('viewerOverlay').style.display = 'none';
 
         document.body.style.overflow = 'auto';
+        
+        // ヘッダー状態をリセット
+        document.getElementById('viewerHeader').classList.remove('hide');
     }
 
     window.onload = search;
