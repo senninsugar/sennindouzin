@@ -1,7 +1,20 @@
 const express = require('express');
 const axios = require('axios');
+const http = require('http');
+const https = require('https');
+const crypto = require('crypto'); // 画像ID生成用
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// HTTP/HTTPS Keep-Alive を有効化
+const httpAgent = new http.Agent({ keepAlive: true });
+const httpsAgent = new https.Agent({ keepAlive: true });
+
+const axiosInstance = axios.create({
+    httpAgent,
+    httpsAgent,
+    timeout: 8000
+});
 
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
@@ -11,148 +24,172 @@ app.use((req, res, next) => {
 
 app.use(express.static('.'));
 
-// 画像URLをBase64に変換する共通関数
-async function getBase64(url) {
+// 画像のバイナリデータとMimeTypeを一時的に保持するサーバー内メモリキャッシュ
+// フロント側にはこのキー（ランダムID）だけが渡ります
+const imageCache = new Map();
+
+// 画像を事前取得してキャッシュに保存し、フロント用の内部プロキシURLを返す関数
+async function registerImageProxy(url) {
     if (!url) return null;
     try {
-        const res = await axios.get(url, {
+        const res = await axiosInstance.get(url, {
             responseType: 'arraybuffer',
-            timeout: 8000,
             headers: {
                 'User-Agent': 'Mozilla/5.0',
                 'Referer': 'https://momon-ga.com/'
             }
         });
 
-        const contentType = res.headers['content-type'];
-        const base64 = Buffer.from(res.data).toString('base64');
+        const contentType = res.headers['content-type'] || 'image/jpeg';
+        const buffer = Buffer.from(res.data);
 
-        // data:image/jpeg;base64,xxxxx の文字列として返す
-        return `data:${contentType};base64,${base64}`;
+        // ランダムな一意のIDを生成
+        const imageId = crypto.randomBytes(16).toString('hex');
+
+        // メモリにバイナリ情報ごと保存
+        imageCache.set(imageId, {
+            buffer: buffer,
+            contentType: contentType
+        });
+
+        // 古いキャッシュによるメモリ圧迫を防ぐため、3分後に自動消去（実用的な軽量化）
+        setTimeout(() => {
+            imageCache.delete(imageId);
+        }, 180000);
+
+        // フロント側はこのURLをそのまま <img src="..."> に入れるだけで画像が表示されます
+        return `/api/image/${imageId}`;
 
     } catch (e) {
-        console.error(`Image Fetch Error: ${url}`, e.message);
+        console.error(`Image Cache Error: ${url}`, e.message);
         return null;
     }
 }
 
+// 1. 検索API
 app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json({ result: [] });
 
     try {
-        const response = await axios.get(`https://momon-ga.com/?s=${encodeURIComponent(query)}`, {
+        const response = await axiosInstance.get(`https://momon-ga.com/?s=${encodeURIComponent(query)}`, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
             }
         });
 
         const html = response.data;
-        const results = [];
+        const tasks = [];
 
-        // 1. post-list内の <a> タグを抽出
-        // 構造: <a href=".../fanzine/moID/"> ... <img src="IMG_URL" alt="TITLE" /> ... <span>TITLE</span> </a>
         const postRegex = /<a href="https:\/\/momon-ga\.com\/(?:fanzine|magazine)\/(mo[0-9-]+)\/">[\s\S]*?<img src="([^"]+)"[\s\S]*?alt="([^"]+)"/g;
 
         let match;
 
         while ((match = postRegex.exec(html)) !== null) {
+            const id = match[1];
+            const imgUrl = match[2];
+            const title = match[3];
 
-            // サムネ画像もサーバー側でBase64化
-            const base64Image = await getBase64(match[2]);
-
-            results.push({
-                id: match[1],
-                image: base64Image,
-                title: match[3],
-                rule: ""
-            });
+            tasks.push((async () => {
+                // 画像をサーバー側にバイナリとして引っ張り込み、内部URLへ差し替え
+                const proxyImageUrl = await registerImageProxy(imgUrl);
+                return {
+                    id: id,
+                    image: proxyImageUrl, // 内部用プロキシURLが入る
+                    title: title,
+                    rule: ""
+                };
+            })());
         }
+
+        const results = await Promise.all(tasks);
 
         console.log(`Query: ${query}, Found: ${results.length} items`);
 
         res.json({ result: results });
 
     } catch (error) {
-
         console.error("Search API Error:", error.message);
-
         res.status(500).json({ error: "Search failed" });
     }
 });
 
-// 全ての画像処理をサーバーサイドで行い、Base64配列として返却する
+// 2. 詳細情報取得API
 app.get('/api/proxy-details', async (req, res) => {
-
     const targetUrl = req.query.url;
 
     if (!targetUrl) return res.status(400).send("URL is required");
 
     try {
-
-        const response = await axios.get(targetUrl, {
+        const response = await axiosInstance.get(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0'
             }
         });
 
         const htmlString = response.data;
-
         const imgUrls = [];
-
         const galleryRegex = /src="([^"]*galleries[^"]*)"/g;
 
         let match;
-
         while ((match = galleryRegex.exec(htmlString)) !== null) {
-
             let src = match[1];
-
             if (src.startsWith('/')) {
                 src = 'https://momon-ga.com' + src;
             }
-
             imgUrls.push(src);
         }
 
         const uniqueImgUrls = [...new Set(imgUrls)];
 
-        // 全画像をBase64文字列化
-        const imageUrlsBase64 = await Promise.all(
-            uniqueImgUrls.map(url => getBase64(url))
+        // 全ての画像を並列で取得・サーバー内部のメモリに格納
+        const proxyImageUrls = await Promise.all(
+            uniqueImgUrls.map(url => registerImageProxy(url))
         );
 
         // null除外
-        const filteredImages = imageUrlsBase64.filter(img => img !== null);
+        const filteredImages = proxyImageUrls.filter(img => img !== null);
 
         const titleMatch = htmlString.match(/<h1[^>]*>(.*?)<\/h1>/);
-
         const title = titleMatch
             ? titleMatch[1].replace(/<[^>]*>?/gm, '').trim()
             : "No Title";
 
-        // Base64文字列配列を返却
+        // フロント側へは、安全な内部プロキシURLの配列が返却されます
         res.json({
             title,
             images: filteredImages
         });
 
     } catch (e) {
-
         console.error(e.message);
-
         res.status(500).send("Detail fetch error");
     }
 });
 
-// 単体画像ProxyもBase64文字列で返却
-app.get('/api/image-proxy', async (req, res) => {
+// 3. 【新設】画像バイナリ実体返却エンドポイント
+// フロントからは単なる「画像ファイルへのリンク」として機能します（URLなどの情報は一切含まれません）
+app.get('/api/image/:id', (req, res) => {
+    const imageId = req.params.id;
+    const cachedImage = imageCache.get(imageId);
 
+    if (!cachedImage) {
+        return res.status(404).send("Image not found or expired");
+    }
+
+    // 正しいContent-Type（image/jpeg等）を設定して、生のバイナリデータをそのまま高速送信
+    res.setHeader('Content-Type', cachedImage.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // フロント側のブラウザキャッシュも効かせてさらに高速化
+    res.send(cachedImage.buffer);
+});
+
+// 4. 元々存在した単体画像Proxy (仕様互換維持のため残していますが、内部はバイナリ直返しに最適化)
+app.get('/api/image-proxy', async (req, res) => {
     const imageUrl = req.query.url;
+    if (!imageUrl) return res.status(400).send("URL is required");
 
     try {
-
-        const response = await axios({
+        const response = await axiosInstance({
             method: 'get',
             url: imageUrl,
             responseType: 'arraybuffer',
@@ -161,19 +198,13 @@ app.get('/api/image-proxy', async (req, res) => {
             }
         });
 
-        const contentType = response.headers['content-type'];
-
-        const base64 = Buffer.from(response.data, 'binary').toString('base64');
-
-        // 文字列として返す
-        res.setHeader('Content-Type', 'text/plain');
-
-        res.send(`data:${contentType};base64,${base64}`);
+        const contentType = response.headers['content-type'] || 'image/jpeg';
+        
+        res.setHeader('Content-Type', contentType);
+        res.send(Buffer.from(response.data));
 
     } catch (e) {
-
         console.error(e.message);
-
         res.status(500).send("Image proxy error");
     }
 });
