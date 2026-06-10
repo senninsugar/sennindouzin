@@ -52,7 +52,7 @@ async function registerImageProxy(url) {
             contentType: contentType
         });
 
-        // 古いキャッシュによるメモリ圧迫を防ぐため、3分後に自動消去（実用的な軽量化）
+        // 古いキャッシュによるメモリ圧迫を防ぐため、3分後に自動消去
         setTimeout(() => {
             imageCache.delete(imageId);
         }, 180000);
@@ -114,11 +114,15 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// 2. 詳細情報取得API
+// 2. 詳細情報取得API（フロントから渡された内部作品IDからサーバー側でURLを組み立てる）
 app.get('/api/proxy-details', async (req, res) => {
-    const targetUrl = req.query.url;
+    // フロント側から渡されるのは単なるID（例: mo12345）のみ。生の外部URLは扱わせない。
+    const id = req.query.id;
 
-    if (!targetUrl) return res.status(400).send("URL is required");
+    if (!id) return res.status(400).send("ID is required");
+
+    // サーバー側で安全に対象URLを生成
+    const targetUrl = `https://momon-ga.com/fanzine/${id}`;
 
     try {
         const response = await axiosInstance.get(targetUrl, {
@@ -167,8 +171,7 @@ app.get('/api/proxy-details', async (req, res) => {
     }
 });
 
-// 3. 【新設】画像バイナリ実体返却エンドポイント
-// フロントからは単なる「画像ファイルへのリンク」として機能します（URLなどの情報は一切含まれません）
+// 3. 画像バイナリ実体返却エンドポイント
 app.get('/api/image/:id', (req, res) => {
     const imageId = req.params.id;
     const cachedImage = imageCache.get(imageId);
@@ -177,13 +180,13 @@ app.get('/api/image/:id', (req, res) => {
         return res.status(404).send("Image not found or expired");
     }
 
-    // 正しいContent-Type（image/jpeg等）を設定して、生のバイナリデータをそのまま高速送信
+    // 正しいContent-Typeを設定して、生のバイナリデータをそのまま高速送信
     res.setHeader('Content-Type', cachedImage.contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // フロント側のブラウザキャッシュも効かせてさらに高速化
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // ブラウザキャッシュ有効化
     res.send(cachedImage.buffer);
 });
 
-// 4. 元々存在した単体画像Proxy (仕様互換維持のため残していますが、内部はバイナリ直返しに最適化)
+// 4. 単体画像Proxy
 app.get('/api/image-proxy', async (req, res) => {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("URL is required");
