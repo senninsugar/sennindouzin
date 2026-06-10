@@ -261,7 +261,7 @@
 
                     card.className = 'card';
 
-                    // Base64文字列をそのままimg.srcへ
+                    // サーバーから返された内部プロキシURL（/api/image/xxxx）をそのままimg.srcへ代入
                     card.innerHTML = `
                         <img src="${item.image}" alt="${item.title}" loading="lazy">
                         <div class="card-info">
@@ -327,12 +327,12 @@
 
                 currentImages = data.images;
 
-                data.images.forEach(base64String => {
+                data.images.forEach(proxyUrl => {
 
                     const newImg = document.createElement('img');
 
-                    // Base64文字列をそのまま代入
-                    newImg.src = base64String;
+                    // サーバー側の一時プロキシURL（/api/image/xxxx）をそのままsrcへ指定して直接表示
+                    newImg.src = proxyUrl;
 
                     viewerImageList.appendChild(newImg);
                 });
@@ -359,13 +359,14 @@
 
         if (confirm(`${currentImages.length}枚の画像を一括でダウンロード（新しいタブで開く）しますか？`)) {
 
-            currentImages.forEach((base64String, index) => {
+            currentImages.forEach((proxyUrl, index) => {
 
                 setTimeout(() => {
 
                     const link = document.createElement('a');
 
-                    link.href = base64String;
+                    // サーバーの一時画像プロキシURLをそのまま利用して安全に保存
+                    link.href = proxyUrl;
 
                     link.download = `file-${index + 1}.jpg`;
 
