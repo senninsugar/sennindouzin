@@ -175,9 +175,54 @@ app.get('/api/proxy-details', async (req, res) => {
             ? titleMatch[1].replace(/<[^>]*>?/gm, '').trim()
             : "No Title";
 
+        // --- 追加のスクレイピング抽出処理 ---
+
+        // 1. 制作サークル
+        const circleMatch = htmlString.match(/制作サークル\s*:\s*<a[^>]*>(.*?)<\/a>/);
+        const circle = circleMatch ? circleMatch[1].trim() : "不明";
+
+        // 2. 作者
+        const authorMatch = htmlString.match(/作者\s*:\s*<a[^>]*>(.*?)<\/a>/);
+        const author = authorMatch ? authorMatch[1].trim() : "不明";
+
+        // 3. ページ数
+        const pagesMatch = htmlString.match(/ページ数\s*:\s*(\d+)ページ/);
+        const pages = pagesMatch ? parseInt(pagesMatch[1], 10) : 0;
+
+        // 4. 公開/投稿日時
+        const dateMatch = htmlString.match(/公開\/投稿日時\s*:\s*<time[^>]*>(.*?)<\/time>/);
+        const postDate = dateMatch ? dateMatch[1].trim() : "不明";
+
+        // 5. 属性・タグ情報（コンテンツの傾向）
+        const tags = [];
+        const tagRegex = /<a href="https:\/\/momon-ga\.com\/tag\/[^"]+"[^>]*>([^<]+)<\/a>/g;
+        let tagMatch;
+        while ((tagMatch = tagRegex.exec(htmlString)) !== null) {
+            tags.push(tagMatch[1].trim());
+        }
+
+        // 6. コメント一覧
+        const comments = [];
+        const commentRegex = /<div class="comment-content">([\s\S]*?)<\/div>/g;
+        let commentMatch;
+        while ((commentMatch = commentRegex.exec(htmlString)) !== null) {
+            // HTMLタグを除去してプレーンテキストにする
+            const cleanComment = commentMatch[1].replace(/<[^>]*>?/gm, '').trim();
+            if (cleanComment) {
+                comments.push(cleanComment);
+            }
+        }
+        // ------------------------------------
+
         res.json({
             title,
-            images: filteredImages
+            images: filteredImages,
+            circle,       // サークル名
+            author,       // 作者名
+            pages,        // ページ数 (数値)
+            postDate,     // 投稿日時
+            tags,         // タグの配列
+            comments      // コメントの配列
         });
 
     } catch (e) {
