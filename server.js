@@ -175,27 +175,27 @@ app.get('/api/proxy-details', async (req, res) => {
             ? titleMatch[1].replace(/<[^>]*>?/gm, '').trim()
             : "No Title";
 
-        // --- 追加のスクレイピング抽出処理 ---
+        // --- 追加のスクレイピング抽出処理（修正版） ---
 
-        // 1. 制作サークル
-        const circleMatch = htmlString.match(/制作サークル\s*:\s*<a[^>]*>(.*?)<\/a>/);
+        // 1. 制作サークル (「制作サークル」という文字列の後方にあるリンク文字列を取得。間に他要素や改行が入るケースに対応)
+        const circleMatch = htmlString.match(/制作サークル\s*:\s*(?:<[^>]+>\s*)*<a[^>]*>([^<]+)<\/a>/i);
         const circle = circleMatch ? circleMatch[1].trim() : "不明";
 
-        // 2. 作者
-        const authorMatch = htmlString.match(/作者\s*:\s*<a[^>]*>(.*?)<\/a>/);
+        // 2. 作者 (「作者」という文字列の後方にあるリンク文字列を取得)
+        const authorMatch = htmlString.match(/作者\s*:\s*(?:<[^>]+>\s*)*<a[^>]*>([^<]+)<\/a>/i);
         const author = authorMatch ? authorMatch[1].trim() : "不明";
 
-        // 3. ページ数
-        const pagesMatch = htmlString.match(/ページ数\s*:\s*(\d+)ページ/);
+        // 3. ページ数 (「ページ数」の後ろの数値を確実に取得。余計な文字やスペースを許容)
+        const pagesMatch = htmlString.match(/ページ数\s*:\s*(?:<[^>]+>\s*)*(\d+)\s*ページ/i);
         const pages = pagesMatch ? parseInt(pagesMatch[1], 10) : 0;
 
-        // 4. 公開/投稿日時
-        const dateMatch = htmlString.match(/公開\/投稿日時\s*:\s*<time[^>]*>(.*?)<\/time>/);
+        // 4. 公開/投稿日時 (timeタグのタグ内、もしくはdatetime属性などから柔軟に取得)
+        const dateMatch = htmlString.match(/公開\/投稿日時\s*:\s*(?:<[^>]+>\s*)*<time[^>]*>([^<]+)<\/time>/i);
         const postDate = dateMatch ? dateMatch[1].trim() : "不明";
 
         // 5. 属性・タグ情報（コンテンツの傾向）
         const tags = [];
-        const tagRegex = /<a href="https:\/\/momon-ga\.com\/tag\/[^"]+"[^>]*>([^<]+)<\/a>/g;
+        const tagRegex = /<a\s+href="https:\/\/momon-ga\.com\/tag\/[^"]+"[^>]*>([^<]+)<\/a>/gi;
         let tagMatch;
         while ((tagMatch = tagRegex.exec(htmlString)) !== null) {
             tags.push(tagMatch[1].trim());
@@ -203,10 +203,9 @@ app.get('/api/proxy-details', async (req, res) => {
 
         // 6. コメント一覧
         const comments = [];
-        const commentRegex = /<div class="comment-content">([\s\S]*?)<\/div>/g;
+        const commentRegex = /<div\s+class="comment-content">([\s\S]*?)<\/div>/gi;
         let commentMatch;
         while ((commentMatch = commentRegex.exec(htmlString)) !== null) {
-            // HTMLタグを除去してプレーンテキストにする
             const cleanComment = commentMatch[1].replace(/<[^>]*>?/gm, '').trim();
             if (cleanComment) {
                 comments.push(cleanComment);
