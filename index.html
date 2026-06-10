@@ -271,6 +271,23 @@
             border-color: #f1c40f;
         }
 
+        /* アクションボタン（詳細・コメント）追加用スタイル */
+        .action-btn {
+            background: #fff;
+            color: var(--primary);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .action-btn:hover {
+            background: #f1f3f5;
+            border-color: var(--primary);
+        }
+
         .viewer-image-list img {
             max-width: 100%;
             margin-bottom: 15px;
@@ -279,6 +296,98 @@
         }
 
         #viewerTitle { font-weight: 700; font-size: 1.1rem; color: var(--primary); margin: 0; flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px; }
+
+        /* ボトムシートモーダル用スタイル */
+        .bottom-sheet-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 3000;
+        }
+        .bottom-sheet {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--bg-card);
+            border-radius: 16px 16px 0 0;
+            box-sizing: border-box;
+            max-height: 80%;
+            overflow-y: auto;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            padding: 25px;
+        }
+        .bottom-sheet.show {
+            transform: translateY(0);
+        }
+        .bottom-sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+        }
+        .bottom-sheet-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+            color: var(--primary);
+        }
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .info-table th, .info-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .info-table th {
+            width: 30%;
+            color: var(--text-sub);
+            font-weight: 600;
+        }
+        .tag-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 5px 0;
+        }
+        .tag-badge {
+            background: #e8f4fd;
+            color: var(--accent-blue);
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        /* コメント用カードUI */
+        .comment-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .comment-card {
+            background: #f8f9fa;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: left;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .comment-card-body {
+            font-size: 0.95rem;
+            color: var(--text-main);
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -309,6 +418,8 @@
     <div class="viewer-header" id="viewerHeader">
         <h2 id="viewerTitle"></h2>
         <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="infoBtn" class="action-btn" onclick="openDetails()">ℹ️ 詳細</button>
+            <button id="commentBtn" class="action-btn" onclick="openComments()">💬 コメント</button>
             <button id="favBtn" class="fav-btn" onclick="toggleFavorite()">★ お気に入り</button>
             <a href="javascript:void(0)" class="dl-btn-top" onclick="downloadAll()">一括保存</a>
             <span class="close-btn" onclick="closeViewer()">✕</span>
@@ -321,6 +432,51 @@
     </div>
 </div>
 
+<!-- 詳細情報用ボトムシートモーダル -->
+<div id="detailsSheetOverlay" class="bottom-sheet-overlay" onclick="closeDetails()">
+    <div class="bottom-sheet" id="detailsSheet" onclick="event.stopPropagation()">
+        <div class="bottom-sheet-header">
+            <h3>作品詳細情報</h3>
+            <span class="close-btn" onclick="closeDetails()">✕</span>
+        </div>
+        <table class="info-table">
+            <tr>
+                <th>制作サークル</th>
+                <td id="infoCircle">-</td>
+            </tr>
+            <tr>
+                <th>作者</th>
+                <td id="infoAuthor">-</td>
+            </tr>
+            <tr>
+                <th>ページ数</th>
+                <td id="infoPages">-</td>
+            </tr>
+            <tr>
+                <th>公開/投稿日時</th>
+                <td id="infoDate">-</td>
+            </tr>
+            <tr>
+                <th>属性・タグ</th>
+                <td>
+                    <div id="infoTags" class="tag-container"></div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<!-- コメント一覧用ボトムシートモーダル -->
+<div id="commentsSheetOverlay" class="bottom-sheet-overlay" onclick="closeComments()">
+    <div class="bottom-sheet" id="commentsSheet" onclick="event.stopPropagation()">
+        <div class="bottom-sheet-header">
+            <h3>コメント一覧</h3>
+            <span class="close-btn" onclick="closeComments()">✕</span>
+        </div>
+        <div id="commentsContainer" class="comment-grid"></div>
+    </div>
+</div>
+
 <script>
     const MY_API_SEARCH = '/api/search';
     const MY_API_DETAILS = '/api/proxy-details';
@@ -328,6 +484,9 @@
     let currentImages = [];
     let currentId = null; // 現在開いている作品のIDを保持
     let lastScrollTop = 0; // スクロール方向判定用
+    
+    // APIから取得した詳細メタデータを保持する変数
+    let currentDetailsData = null;
 
     // ホーム画面のメニューモーダルの開閉
     function toggleHomeMenu(event) {
@@ -423,6 +582,7 @@
         viewerStatus.innerText = "コンテンツを最適化しています...";
 
         currentImages = [];
+        currentDetailsData = null; // メタデータをリセット
         
         // お気に入りボタンの状態更新
         updateFavoriteButtonState();
@@ -434,6 +594,9 @@
             const response = await fetch(finalUrl);
 
             const data = await response.json();
+            
+            // 取得した各種メタデータを変数に保存
+            currentDetailsData = data;
 
             viewerTitle.innerText = data.title;
 
@@ -536,6 +699,72 @@
         localStorage.setItem(`bookmark_${currentId}`, currentVisibleIndex);
     });
 
+    // 詳細情報モーダル（ボトムシート）を開く
+    function openDetails() {
+        if (!currentDetailsData) return;
+
+        document.getElementById('infoCircle').innerText = currentDetailsData.circle || '不明';
+        document.getElementById('infoAuthor').innerText = currentDetailsData.author || '不明';
+        document.getElementById('infoPages').innerText = currentDetailsData.pages ? `${currentDetailsData.pages}ページ` : '不明';
+        document.getElementById('infoDate').innerText = currentDetailsData.postDate || '不明';
+
+        const tagsContainer = document.getElementById('infoTags');
+        tagsContainer.innerHTML = '';
+        if (currentDetailsData.tags && currentDetailsData.tags.length > 0) {
+            currentDetailsData.tags.forEach(tag => {
+                const span = document.createElement('span');
+                span.className = 'tag-badge';
+                span.innerText = tag;
+                tagsContainer.appendChild(span);
+            });
+        } else {
+            tagsContainer.innerText = 'なし';
+        }
+
+        const overlay = document.getElementById('detailsSheetOverlay');
+        const sheet = document.getElementById('detailsSheet');
+        overlay.style.display = 'block';
+        setTimeout(() => sheet.classList.add('show'), 10);
+    }
+
+    function closeDetails() {
+        const overlay = document.getElementById('detailsSheetOverlay');
+        const sheet = document.getElementById('detailsSheet');
+        sheet.classList.remove('show');
+        setTimeout(() => overlay.style.display = 'none', 300);
+    }
+
+    // コメント一覧モーダル（ボトムシート）を開く
+    function openComments() {
+        if (!currentDetailsData) return;
+
+        const container = document.getElementById('commentsContainer');
+        container.innerHTML = '';
+
+        if (currentDetailsData.comments && currentDetailsData.comments.length > 0) {
+            currentDetailsData.comments.forEach(comment => {
+                const card = document.createElement('div');
+                card.className = 'comment-card';
+                card.innerHTML = `<div class="comment-card-body">${comment}</div>`;
+                container.appendChild(card);
+            });
+        } else {
+            container.innerHTML = '<div class="status" style="margin:20px 0;">コメントはありません。</div>';
+        }
+
+        const overlay = document.getElementById('commentsSheetOverlay');
+        const sheet = document.getElementById('commentsSheet');
+        overlay.style.display = 'block';
+        setTimeout(() => sheet.classList.add('show'), 10);
+    }
+
+    function closeComments() {
+        const overlay = document.getElementById('commentsSheetOverlay');
+        const sheet = document.getElementById('commentsSheet');
+        sheet.classList.remove('show');
+        setTimeout(() => overlay.style.display = 'none', 300);
+    }
+
     function downloadAll() {
 
         if (currentImages.length === 0) return;
@@ -573,6 +802,12 @@
         
         // ヘッダー状態をリセット
         document.getElementById('viewerHeader').classList.remove('hide');
+        
+        // シートが開いていれば強制終了
+        document.getElementById('detailsSheetOverlay').style.display = 'none';
+        document.getElementById('detailsSheet').classList.remove('show');
+        document.getElementById('commentsSheetOverlay').style.display = 'none';
+        document.getElementById('commentsSheet').classList.remove('show');
     }
 
     window.onload = search;
