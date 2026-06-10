@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>読み途中一覧</title>
+    <style>
+        :root {
+            --bg-body: #f8f9fa;
+            --bg-card: #ffffff;
+            --primary: #2c3e50;
+            --accent-blue: #3498db;
+            --text-main: #2d3436;
+            --text-sub: #636e72;
+            --border: #e1e8ed;
+            --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        body {
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .brand-header {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .brand-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--primary);
+            margin: 0;
+        }
+
+        .back-btn {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #f1f3f5;
+            color: var(--primary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: 0.2s;
+            border: 1px solid var(--border);
+        }
+        .back-btn:hover {
+            background: var(--accent-blue);
+            color: #fff;
+            border-color: var(--accent-blue);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            transition: var(--transition);
+            cursor: pointer;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.08);
+            border-color: var(--accent-blue);
+        }
+
+        .card img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-info {
+            padding: 12px;
+            background: #fff;
+            flex-grow: 1;
+        }
+
+        .card-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            height: 2.8em;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+
+        .card-id {
+            color: var(--text-sub);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+
+        /* 読み途中ページ数バッジ */
+        .bookmark-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(44, 62, 80, 0.85);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            backdrop-filter: blur(4px);
+        }
+
+        .status { text-align: center; margin: 40px; color: var(--text-sub); font-size: 0.95em; }
+
+        #viewerOverlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #ffffff; z-index: 1000; overflow-y: auto; color: var(--text-main);
+        }
+
+        .viewer-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(255,255,255,0.95);
+            padding: 12px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(8px);
+            z-index: 1002;
+            transition: transform 0.3s ease;
+        }
+        
+        .viewer-header.hide {
+            transform: translateY(-100%);
+        }
+
+        .viewer-content { max-width: 850px; margin: 0 auto; text-align: center; padding: 80px 20px 20px 20px; }
+
+        .close-btn { font-size: 28px; cursor: pointer; color: var(--text-sub); line-height: 1; }
+        .close-btn:hover { color: var(--text-main); }
+
+        .dl-btn-top {
+            background: #f1f3f5;
+            color: var(--primary);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: 0.2s;
+            border: 1px solid var(--border);
+        }
+        .dl-btn-top:hover { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+
+        .fav-btn {
+            background: #fff;
+            color: #f1c40f;
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .fav-btn.active {
+            background: #f1c40f;
+            color: #fff;
+            border-color: #f1c40f;
+        }
+
+        .viewer-image-list img {
+            max-width: 100%;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 1px solid var(--border);
+        }
+
+        #viewerTitle { font-weight: 700; font-size: 1.1rem; color: var(--primary); margin: 0; flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="brand-header">
+        <a href="index.html" class="back-btn">← 戻る</a>
+        <h1>📖 読み途中一覧</h1>
+    </div>
+
+    <div id="status" class="status"></div>
+    <div class="grid" id="resultGrid"></div>
+</div>
+
+<div id="viewerOverlay">
+    <div class="viewer-header" id="viewerHeader">
+        <h2 id="viewerTitle"></h2>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="favBtn" class="fav-btn" onclick="toggleFavorite()">★ お気に入り</button>
+            <a href="javascript:void(0)" class="dl-btn-top" onclick="downloadAll()">一括保存</a>
+            <span class="close-btn" onclick="closeViewer()">✕</span>
+        </div>
+    </div>
+
+    <div class="viewer-content">
+        <div id="viewerStatus" class="status"></div>
+        <div id="viewerImageList" class="viewer-image-list"></div>
+    </div>
+</div>
+
+<script>
+    const MY_API_DETAILS = '/api/proxy-details';
+    let currentImages = [];
+    let currentId = null;
+    let lastScrollTop = 0;
+
+    async function loadBookmarks() {
+        const grid = document.getElementById('resultGrid');
+        const status = document.getElementById('status');
+        grid.innerHTML = '';
+
+        // localStorageからしおりデータを全抽出
+        let bookmarks = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('bookmark_')) {
+                const id = key.replace('bookmark_', '');
+                const pageIndex = parseInt(localStorage.getItem(key), 10);
+                bookmarks.push({ id, pageIndex });
+            }
+        }
+
+        if (bookmarks.length === 0) {
+            status.innerText = '読み途中の作品はありません。';
+            return;
+        }
+
+        status.innerText = '読み途中カタログを読み込み中...';
+
+        try {
+            const promises = bookmarks.map(b => 
+                fetch(`${MY_API_DETAILS}?id=${encodeURIComponent(b.id)}`).then(res => res.json().then(data => ({
+                    id: b.id,
+                    pageIndex: b.pageIndex,
+                    ...data
+                })))
+            );
+
+            const results = await Promise.all(promises);
+            status.innerText = '';
+
+            results.forEach(item => {
+                const coverImage = (item.images && item.images.length > 0) ? item.images[0] : '';
+                
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="bookmark-badge">${item.pageIndex + 1} ページ目</div>
+                    <img src="${coverImage}" alt="${item.title}" loading="lazy">
+                    <div class="card-info">
+                        <div class="card-title">${item.title}</div>
+                        <div class="card-id">ID: ${item.id}</div>
+                    </div>
+                `;
+                card.onclick = () => openViewer(item.id);
+                grid.appendChild(card);
+            });
+
+        } catch (error) {
+            console.error(error);
+            status.innerText = 'データの取得に失敗しました。';
+        }
+    }
+
+    async function openViewer(id) {
+        currentId = id;
+        const overlay = document.getElementById('viewerOverlay');
+        const viewerTitle = document.getElementById('viewerTitle');
+        const viewerStatus = document.getElementById('viewerStatus');
+        const viewerImageList = document.getElementById('viewerImageList');
+
+        overlay.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+        viewerImageList.innerHTML = '';
+        viewerTitle.innerText = '読み込み中...';
+        viewerStatus.innerText = "コンテンツを最適化しています...";
+        currentImages = [];
+        
+        updateFavoriteButtonState();
+
+        const finalUrl = `${MY_API_DETAILS}?id=${encodeURIComponent(id)}`;
+
+        try {
+            const response = await fetch(finalUrl);
+            const data = await response.json();
+            viewerTitle.innerText = data.title;
+
+            if (data.images && data.images.length > 0) {
+                currentImages = data.images;
+                data.images.forEach((proxyUrl, index) => {
+                    const newImg = document.createElement('img');
+                    newImg.src = proxyUrl;
+                    newImg.dataset.index = index;
+                    viewerImageList.appendChild(newImg);
+                });
+
+                viewerStatus.innerText = `${data.images.length} ページを表示中`;
+
+                // 前回位置へ自動移動
+                setTimeout(() => {
+                    const savedIndex = localStorage.getItem(`bookmark_${currentId}`);
+                    if (savedIndex !== null) {
+                        const targetImg = viewerImageList.querySelector(`img[data-index="${savedIndex}"]`);
+                        if (targetImg) {
+                            targetImg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }
+                }, 300);
+
+            } else {
+                viewerStatus.innerText = "画像データが見つかりませんでした。";
+            }
+        } catch (error) {
+            console.error(error);
+            viewerStatus.innerText = "データの取得に失敗しました。";
+        }
+    }
+
+    function updateFavoriteButtonState() {
+        const favBtn = document.getElementById('favBtn');
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        if (favorites.includes(currentId)) {
+            favBtn.innerText = '★ お気に入り中';
+            favBtn.classList.add('active');
+        } else {
+            favBtn.innerText = '☆ お気に入り';
+            favBtn.classList.remove('active');
+        }
+    }
+
+    function toggleFavorite() {
+        if (!currentId) return;
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        const index = favorites.indexOf(currentId);
+        
+        if (index > -1) {
+            favorites.splice(index, 1);
+        } else {
+            favorites.push(currentId);
+        }
+        
+        localStorage.setItem('favorites', JSON.stringify(favorites));
+        updateFavoriteButtonState();
+    }
+
+    document.getElementById('viewerOverlay').addEventListener('scroll', function(e) {
+        const overlay = e.target;
+        const scrollTop = overlay.scrollTop;
+        const header = document.getElementById('viewerHeader');
+
+        if (scrollTop > lastScrollTop && scrollTop > 100) {
+            header.classList.add('hide');
+        } else {
+            header.classList.remove('hide');
+        }
+        lastScrollTop = scrollTop;
+
+        if (currentImages.length === 0 || !currentId) return;
+        const images = overlay.querySelectorAll('.viewer-image-list img');
+        let currentVisibleIndex = 0;
+        
+        for (let img of images) {
+            const rect = img.getBoundingClientRect();
+            if (rect.top <= window.innerHeight / 2 && rect.bottom >= window.innerHeight / 2) {
+                currentVisibleIndex = img.dataset.index;
+                break;
+            }
+        }
+        localStorage.setItem(`bookmark_${currentId}`, currentVisibleIndex);
+    });
+
+    function downloadAll() {
+        if (currentImages.length === 0) return;
+        if (confirm(`${currentImages.length}枚の画像を一括でダウンロードしますか？`)) {
+            currentImages.forEach((proxyUrl, index) => {
+                setTimeout(() => {
+                    const link = document.createElement('a');
+                    link.href = proxyUrl;
+                    link.download = `file-${index + 1}.jpg`;
+                    link.target = '_blank';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }, index * 200);
+            });
+        }
+    }
+
+    function closeViewer() {
+        document.getElementById('viewerOverlay').style.display = 'none';
+        document.body.style.overflow = 'auto';
+        document.getElementById('viewerHeader').classList.remove('hide');
+        loadBookmarks(); // ビューアーを閉じたら進捗状況（ページ数バッジなど）を最新版にするためリロード
+    }
+
+    window.onload = loadBookmarks;
+</script>
+</body>
+</html>
