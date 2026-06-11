@@ -16,18 +16,22 @@ const axiosInstance = axios.create({
     timeout: 8000
 });
 
-const ENC_KEY = crypto.randomBytes(32);
+// サーバー再起動時にもキーが維持されるよう、環境変数か固定の32バイトバッファを使用（セキュリティ向上のため推奨）
+const ENC_KEY = process.env.ENCRYPTION_KEY ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex') : crypto.scryptSync('momon-ga-secret-password-1234', 'salt', 32);
 const IV_LENGTH = 16;
 
 function encryptBuffer(buffer) {
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv('aes-256-cbc', ENC_KEY, iv);
     const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
+    // 先頭に16バイトのIV、その後に暗号化データを結合
     return Buffer.concat([iv, encrypted]);
 }
 
 function decryptBuffer(buffer) {
+    // 先頭16バイトからIVを抽出
     const iv = buffer.subarray(0, IV_LENGTH);
+    // 残りの部分から暗号化データを抽出
     const encryptedText = buffer.subarray(IV_LENGTH);
     const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, iv);
     return Buffer.concat([decipher.update(encryptedText), decipher.final()]);
@@ -61,7 +65,7 @@ async function registerImageProxy(url) {
         const res = await axiosInstance.get(url, {
             responseType: 'arraybuffer',
             headers: {
-                'User-Agent': 'Mozilla/5.0',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://momon-ga.com/'
             }
         });
@@ -244,7 +248,7 @@ app.get('/api/image/:id', (req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=86400');
         res.send(decryptedBuffer);
     } catch (e) {
-        console.error(e.message);
+        console.error("Decryption error details:", e.message);
         res.status(500).send("Decryption error");
     }
 });
@@ -259,6 +263,7 @@ app.get('/api/image-proxy', async (req, res) => {
             url: imageUrl,
             responseType: 'arraybuffer',
             headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://momon-ga.com/'
             }
         });
