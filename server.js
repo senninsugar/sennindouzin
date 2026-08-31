@@ -207,14 +207,55 @@ app.get('/api/proxy-details', async (req, res) => {
 
         // 6. コメント一覧
         const comments = [];
-        const commentRegex = /<div\s+class="comment-content">([\s\S]*?)<\/div>/gi;
-        let commentMatch;
-        while ((commentMatch = commentRegex.exec(htmlString)) !== null) {
-            const cleanComment = commentMatch[1].replace(/<[^>]*>?/gm, '').trim();
-            if (cleanComment) {
-                comments.push(cleanComment);
+        const commentRegex = /<div\s+class="comment\s+[^"]*id="comment-\d+"[^>]*>([\s\S]*?)<\/div>\s*<\/li>/gi;
+        let commentBlockMatch;
+        while ((commentBlockMatch = commentRegex.exec(htmlString)) !== null) {
+            const block = commentBlockMatch[1];
+
+            const numMatch = block.match(/<span\s+class="comment_num">([^<]+)<\/span>/);
+            const authorMatch = block.match(/<span\s+class="comment_author">([^<]+)<\/span>/);
+            const dateMatch = block.match(/<span\s+class="comment_date">([^<]+)<\/span>/);
+            const textMatch = block.match(/<p>([\s\S]*?)<\/p>/);
+            const likesMatch = block.match(/data-ulike-counter-value="([^"]+)"/);
+
+            const num = numMatch ? numMatch[1].trim() : "";
+            const authorName = authorMatch ? authorMatch[1].trim() : "";
+            const date = dateMatch ? dateMatch[1].trim() : "";
+            const text = textMatch ? textMatch[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>?/gm, '').trim() : "";
+            const likes = likesMatch ? likesMatch[1].trim() : "";
+
+            if (text) {
+                comments.push({
+                    num,
+                    author: authorName,
+                    date,
+                    text,
+                    likes
+                });
             }
         }
+
+        // 7. 関連作品一覧
+        const relatedTasks = [];
+        const relatedRegex = /<a\s+href="https:\/\/momon-ga\.com\/(?:fanzine|magazine)\/(mo[0-9-]+)\/">[\s\S]*?<img[^>]*src="([^"]+)"[\s\S]*?alt="([^"]+)"[\s\S]*?(?:<div\s+class="post-list-wpulike">([^<]+)<\/div>)?[\s\S]*?<\/a>/gi;
+        let relatedMatch;
+        while ((relatedMatch = relatedRegex.exec(htmlString)) !== null) {
+            const relId = relatedMatch[1];
+            const relImgUrl = relatedMatch[2];
+            const relTitle = relatedMatch[3];
+            const relLikes = relatedMatch[4] ? relatedMatch[4].trim() : "";
+
+            relatedTasks.push((async () => {
+                const proxyImageUrl = await registerImageProxy(relImgUrl);
+                return {
+                    id: relId,
+                    title: relTitle,
+                    image: proxyImageUrl,
+                    likes: relLikes
+                };
+            })());
+        }
+        const related = await Promise.all(relatedTasks);
         // ------------------------------------
 
         res.json({
@@ -225,7 +266,8 @@ app.get('/api/proxy-details', async (req, res) => {
             pages,        // ページ数 (数値)
             postDate,     // 投稿日時
             tags,         // タグの配列
-            comments      // コメントの配列
+            comments,     // コメントのオブジェクト配列
+            related       // 関連作品の配列
         });
 
     } catch (e) {
@@ -269,7 +311,7 @@ app.get('/api/image-proxy', async (req, res) => {
         });
 
         const contentType = response.headers['content-type'] || 'image/jpeg';
-        
+
         res.setHeader('Content-Type', contentType);
         res.send(Buffer.from(response.data));
 
