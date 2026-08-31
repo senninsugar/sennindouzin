@@ -271,7 +271,7 @@
             border-color: #f1c40f;
         }
 
-        /* アクションボタン（詳細・コメント）追加用スタイル */
+        /* アクションボタン（詳細・コメント・関連作品）追加用スタイル */
         .action-btn {
             background: #fff;
             color: var(--primary);
@@ -382,11 +382,24 @@
             text-align: left;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         }
+        .comment-card-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            border-bottom: 1px dashed var(--border);
+            padding-bottom: 4px;
+        }
         .comment-card-body {
             font-size: 0.95rem;
             color: var(--text-main);
             white-space: pre-wrap;
             line-height: 1.6;
+        }
+        .comment-likes {
+            color: #e74c3c;
+            font-weight: 600;
         }
     </style>
 </head>
@@ -420,6 +433,7 @@
         <div style="display: flex; align-items: center; gap: 15px;">
             <button id="infoBtn" class="action-btn" onclick="openDetails()">ℹ️ 詳細</button>
             <button id="commentBtn" class="action-btn" onclick="openComments()">💬 コメント</button>
+            <button id="relatedBtn" class="action-btn" onclick="openRelated()">🔗 関連作品</button>
             <button id="favBtn" class="fav-btn" onclick="toggleFavorite()">★ お気に入り</button>
             <a href="javascript:void(0)" class="dl-btn-top" onclick="downloadAll()">一括保存</a>
             <span class="close-btn" onclick="closeViewer()">✕</span>
@@ -472,6 +486,16 @@
             <span class="close-btn" onclick="closeComments()">✕</span>
         </div>
         <div id="commentsContainer" class="comment-grid"></div>
+    </div>
+</div>
+
+<div id="relatedSheetOverlay" class="bottom-sheet-overlay" onclick="closeRelated()">
+    <div class="bottom-sheet" id="relatedSheet" onclick="event.stopPropagation()">
+        <div class="bottom-sheet-header">
+            <h3>関連作品</h3>
+            <span class="close-btn" onclick="closeRelated()">✕</span>
+        </div>
+        <div id="relatedContainer" class="grid"></div>
     </div>
 </div>
 
@@ -743,7 +767,28 @@
             currentDetailsData.comments.forEach(comment => {
                 const card = document.createElement('div');
                 card.className = 'comment-card';
-                card.innerHTML = `<div class="comment-card-body">${comment}</div>`;
+
+                // オブジェクト形式に対応
+                if (typeof comment === 'object') {
+                    const headerInfo = [
+                        comment.num ? `#${comment.num}` : '',
+                        comment.author ? comment.author : '匿名',
+                        comment.date ? comment.date : ''
+                    ].filter(Boolean).join(' | ');
+
+                    const likesInfo = comment.likes ? `<span class="comment-likes">♥ ${comment.likes}</span>` : '';
+
+                    card.innerHTML = `
+                        <div class="comment-card-header">
+                            <span>${headerInfo}</span>
+                            ${likesInfo}
+                        </div>
+                        <div class="comment-card-body">${comment.text || ''}</div>
+                    `;
+                } else {
+                    card.innerHTML = `<div class="comment-card-body">${comment}</div>`;
+                }
+
                 container.appendChild(card);
             });
         } else {
@@ -759,6 +804,47 @@
     function closeComments() {
         const overlay = document.getElementById('commentsSheetOverlay');
         const sheet = document.getElementById('commentsSheet');
+        sheet.classList.remove('show');
+        setTimeout(() => overlay.style.display = 'none', 300);
+    }
+
+    // 関連作品モーダル（ボトムシート）を開く
+    function openRelated() {
+        if (!currentDetailsData) return;
+
+        const container = document.getElementById('relatedContainer');
+        container.innerHTML = '';
+
+        if (currentDetailsData.related && currentDetailsData.related.length > 0) {
+            currentDetailsData.related.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <img src="${item.image || ''}" alt="${item.title || ''}" loading="lazy">
+                    <div class="card-info">
+                        <div class="card-title">${item.title || ''}</div>
+                        <div class="card-id">ID: ${item.id || ''} ${item.likes ? '♥ ' + item.likes : ''}</div>
+                    </div>
+                `;
+                card.onclick = () => {
+                    closeRelated();
+                    openViewer(item.id, '');
+                };
+                container.appendChild(card);
+            });
+        } else {
+            container.innerHTML = '<div class="status" style="margin:20px 0; grid-column: 1 / -1;">関連作品はありません。</div>';
+        }
+
+        const overlay = document.getElementById('relatedSheetOverlay');
+        const sheet = document.getElementById('relatedSheet');
+        overlay.style.display = 'block';
+        setTimeout(() => sheet.classList.add('show'), 10);
+    }
+
+    function closeRelated() {
+        const overlay = document.getElementById('relatedSheetOverlay');
+        const sheet = document.getElementById('relatedSheet');
         sheet.classList.remove('show');
         setTimeout(() => overlay.style.display = 'none', 300);
     }
@@ -806,6 +892,8 @@
         document.getElementById('detailsSheet').classList.remove('show');
         document.getElementById('commentsSheetOverlay').style.display = 'none';
         document.getElementById('commentsSheet').classList.remove('show');
+        document.getElementById('relatedSheetOverlay').style.display = 'none';
+        document.getElementById('relatedSheet').classList.remove('show');
     }
 
     window.onload = search;
